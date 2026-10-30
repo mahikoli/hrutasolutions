@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-
+##ghfjfhfekejfkefk###
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./hruta_onecrm.db"
     secret_key: str = "CHANGE_ME_BEFORE_DEPLOYMENT"
