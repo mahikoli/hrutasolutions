@@ -32,10 +32,10 @@ python -m venv .venv
 # macOS/Linux:
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
+python -c "from pathlib import Path; Path('.env').touch(exist_ok=True)"
 ```
 
-Edit `.env` to replace `SECRET_KEY` with a long random secret. Set `DATABASE_URL` only when using PostgreSQL or Supabase; URL-encode special characters in database passwords. Supabase connection options depend on whether you use direct or pooler connections. Do not commit `.env` to GitHub.
+Add a `SECRET_KEY` with at least 32 random characters to `.env`; generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Set `DATABASE_URL` only when using PostgreSQL or Supabase; URL-encode special characters in database passwords. Supabase connection options depend on whether you use direct or pooler connections. Do not commit `.env` to GitHub.
 
 The API uses SQLAlchemy models in `app/models.py` as its executable schema. `sql/postgresql_schema.sql` is a separate proposal design with UUID-based IDs; do not run it against the same database used by this API. Alembic manages deployed schema changes through `migrations/`.
 

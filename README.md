@@ -9,7 +9,6 @@ hruta_onecrm_backend/
 ├── backend/
 │   ├── app/                 # FastAPI application and routers
 │   ├── sql/                 # PostgreSQL reference schema
-│   ├── .env.example         # Backend configuration template
 │   ├── requirements.txt     # Python dependencies
 │   └── README.md            # Backend setup and API details
 ├── frontend/
@@ -30,8 +29,9 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-Copy-Item .env.example .env
-# Set SECRET_KEY in .env before using accounts
+if (!(Test-Path .env)) { New-Item -ItemType File .env }
+# Add a private SECRET_KEY (at least 32 random characters) to .env
+# Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"
 uvicorn app.main:app --reload
 ```
 
