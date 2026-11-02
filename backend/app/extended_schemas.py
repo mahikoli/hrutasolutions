@@ -353,3 +353,42 @@ class SalesProposalUpdate(RecordModel):
     status: Literal["draft", "sent", "accepted", "rejected"] | None = None
     sent_at: datetime | None = None
     response_notes: str | None = None
+
+
+class SupportTicketCreate(RecordModel):
+    subject: str = Field(min_length=3, max_length=200)
+    description: str = Field(min_length=3, max_length=10000)
+    organization_id: int | None = None
+    contact_id: int | None = None
+    assignee_id: int | None = None
+    priority: Literal["low", "medium", "high"] = "medium"
+
+
+class SupportTicketUpdate(RecordModel):
+    subject: str | None = Field(default=None, min_length=3, max_length=200)
+    description: str | None = Field(default=None, min_length=3, max_length=10000)
+    organization_id: int | None = None
+    contact_id: int | None = None
+    assignee_id: int | None = None
+    priority: Literal["low", "medium", "high"] | None = None
+    status: Literal["open", "in_progress", "waiting", "resolved", "closed"] | None = None
+    resolution: str | None = Field(default=None, max_length=10000)
+
+
+class EmployeeProfileCreate(RecordModel):
+    user_id: int
+    employee_code: str | None = Field(default=None, max_length=40)
+    department: str | None = Field(default=None, max_length=120)
+    designation: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=30)
+    joining_date: date | None = None
+    manager_id: int | None = None
+
+
+class EmployeeProfileUpdate(RecordModel):
+    employee_code: str | None = Field(default=None, max_length=40)
+    department: str | None = Field(default=None, max_length=120)
+    designation: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=30)
+    joining_date: date | None = None
+    manager_id: int | None = None

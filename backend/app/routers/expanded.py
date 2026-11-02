@@ -21,7 +21,8 @@ from ..extended_schemas import (
     ProjectUpdate as ProjectPatch, RefundCreate, RefundDecision, RoleAssignment,
     SalesProposalCreate, SalesProposalUpdate, TrainerCreate, TrainingAttendanceCreate,
     TrainingBatchCreate, TrainingBatchUpdate, TrainingSessionCreate, CourseCreate,
-    CourseUpdate,
+    CourseUpdate, SupportTicketCreate, SupportTicketUpdate, EmployeeProfileCreate,
+    EmployeeProfileUpdate,
 )
 from ..models import (
     AppConfiguration, Assessment, AssessmentResult, AuditLog, Course, Enrollment,
@@ -30,7 +31,8 @@ from ..models import (
     Partner, PartnershipActivity, PartnershipAgreement, PipelineHistory, Project,
     ProjectMilestone, ProjectTask, ProjectUpdate, Refund, Role, SalesProposal, Trainer,
     TrainingAttendance, TrainingBatch, TrainingSession, User, Lead, Opportunity, Invoice,
-    PaymentTransaction,
+    PaymentTransaction, Organization, Contact,
+    SupportTicket, EmployeeProfile,
 )
 from ..security import get_current_user, require_roles
 
@@ -44,6 +46,9 @@ TRAINING = ("Super Admin", "Management", "Training Coordinator")
 PARTNERSHIPS = ("Super Admin", "Management", "Sales / Business Development", "Internship Coordinator")
 PROJECTS = ("Super Admin", "Management", "Project / Team Manager")
 FINANCE = ("Super Admin", "Management", "Finance / Accounts")
+SUPPORT = ("Super Admin", "Management", "Sales / Business Development", "Project / Team Manager", "Employee / Intern")
+SUPPORT_MANAGERS = ("Super Admin", "Management", "Project / Team Manager")
+EMPLOYEE_MANAGERS = ("Super Admin", "Management")
 
 
 def audit(db: Session, user: User, action: str, entity: str, entity_id: int | str, details: str | None = None):
@@ -74,6 +79,203 @@ def set_fields(record, values: dict):
 
 def as_dict(record, fields: tuple[str, ...]):
     return {field: getattr(record, field) for field in fields}
+
+
+# Employee profiles
+def employee_view(profile: EmployeeProfile, user: User):
+    return {
+        "id": profile.id,
+        "user_id": profile.user_id,
+        "full_name": user.full_name,
+        "email": user.email,
+        "roles": [role.name for role in user.roles],
+        "is_active": user.is_active,
+        "employee_code": profile.employee_code,
+        "department": profile.department,
+        "designation": profile.designation,
+        "phone": profile.phone,
+        "joining_date": profile.joining_date,
+        "manager_id": profile.manager_id,
+        "created_at": profile.created_at,
+        "updated_at": profile.updated_at,
+    }
+
+
+@router.get("/employees")
+def list_employees(
+    search: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    query = db.query(EmployeeProfile, User).join(User, EmployeeProfile.user_id == User.id)
+    if not {role.name for role in user.roles}.intersection(EMPLOYEE_MANAGERS):
+        query = query.filter(User.id == user.id)
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(
+            User.full_name.ilike(term), User.email.ilike(term),
+            EmployeeProfile.employee_code.ilike(term), EmployeeProfile.department.ilike(term),
+            EmployeeProfile.designation.ilike(term),
+        ))
+    rows = query.order_by(User.full_name).offset((page - 1) * page_size).limit(page_size).all()
+    return [employee_view(profile, employee) for profile, employee in rows]
+
+
+@router.post("/employees", status_code=201)
+def create_employee_profile(
+    data: EmployeeProfileCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*EMPLOYEE_MANAGERS)),
+):
+    employee = require_record(db, User, data.user_id, "User")
+    if db.query(EmployeeProfile.id).filter(EmployeeProfile.user_id == employee.id).first():
+        raise HTTPException(409, "This user already has an employee profile")
+    if data.employee_code and db.query(EmployeeProfile.id).filter(EmployeeProfile.employee_code == data.employee_code).first():
+        raise HTTPException(409, "Employee code is already in use")
+    require_record(db, User, data.manager_id, "Manager")
+    profile = EmployeeProfile(**data.model_dump())
+    db.add(profile)
+    db.flush()
+    audit(db, user, "employee_profile.created", "employee_profile", profile.id)
+    db.commit()
+    db.refresh(profile)
+    return employee_view(profile, employee)
+
+
+@router.patch("/employees/{profile_id}")
+def update_employee_profile(
+    profile_id: int,
+    data: EmployeeProfileUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*EMPLOYEE_MANAGERS)),
+):
+    profile = db.get(EmployeeProfile, profile_id)
+    if not profile:
+        raise HTTPException(404, "Employee profile not found")
+    changes = data.model_dump(exclude_unset=True)
+    if changes.get("manager_id") is not None:
+        require_record(db, User, changes["manager_id"], "Manager")
+    if changes.get("employee_code"):
+        duplicate = db.query(EmployeeProfile.id).filter(
+            EmployeeProfile.id != profile.id,
+            EmployeeProfile.employee_code == changes["employee_code"],
+        ).first()
+        if duplicate:
+            raise HTTPException(409, "Employee code is already in use")
+    set_fields(profile, changes)
+    audit(db, user, "employee_profile.updated", "employee_profile", profile.id, ",".join(changes.keys()))
+    db.commit()
+    db.refresh(profile)
+    return employee_view(profile, db.get(User, profile.user_id))
+
+
+# Customer support
+@router.get("/support-tickets")
+def list_support_tickets(
+    search: str | None = None,
+    status: str | None = None,
+    priority: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*SUPPORT)),
+):
+    query = db.query(SupportTicket)
+    roles = {role.name for role in user.roles}
+    if not roles.intersection(SUPPORT_MANAGERS):
+        query = query.filter(or_(SupportTicket.created_by_id == user.id, SupportTicket.assignee_id == user.id))
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(SupportTicket.subject.ilike(term), SupportTicket.description.ilike(term)))
+    if status:
+        query = query.filter(SupportTicket.status == status)
+    if priority:
+        query = query.filter(SupportTicket.priority == priority)
+    return query.order_by(SupportTicket.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+
+
+@router.post("/support-tickets", status_code=201)
+def create_support_ticket(
+    data: SupportTicketCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*SUPPORT)),
+):
+    values = data.model_dump()
+    roles = {role.name for role in user.roles}
+    managers = roles.intersection(SUPPORT_MANAGERS)
+    requested_assignee = values.get("assignee_id")
+    if requested_assignee is not None and not managers and requested_assignee != user.id:
+        raise HTTPException(403, "Only support managers can assign tickets to another user")
+    assignee_id = requested_assignee or user.id
+    require_record(db, User, assignee_id, "Assignee")
+    organization = require_record(db, Organization, values.get("organization_id"), "Organization")
+    contact = require_record(db, Contact, values.get("contact_id"), "Contact")
+    if contact and organization and contact.organization_id != organization.id:
+        raise HTTPException(422, "The selected contact does not belong to the selected organization")
+
+    values["assignee_id"] = assignee_id
+    ticket = SupportTicket(**values, created_by_id=user.id)
+    db.add(ticket)
+    db.flush()
+    if assignee_id != user.id:
+        db.add(Notification(
+            user_id=assignee_id,
+            title="Support ticket assigned",
+            message=f"You were assigned: {ticket.subject}",
+            related_type="support_ticket",
+            related_id=ticket.id,
+        ))
+    audit(db, user, "support_ticket.created", "support_ticket", ticket.id)
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
+@router.patch("/support-tickets/{ticket_id}")
+def update_support_ticket(
+    ticket_id: int,
+    data: SupportTicketUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*SUPPORT)),
+):
+    ticket = db.get(SupportTicket, ticket_id)
+    if not ticket:
+        raise HTTPException(404, "Support ticket not found")
+    roles = {role.name for role in user.roles}
+    managers = roles.intersection(SUPPORT_MANAGERS)
+    if not managers and user.id not in {ticket.created_by_id, ticket.assignee_id}:
+        raise HTTPException(403, "This ticket is assigned to another user")
+
+    changes = data.model_dump(exclude_unset=True)
+    if "assignee_id" in changes and not managers:
+        raise HTTPException(403, "Only support managers can reassign tickets")
+    if changes.get("assignee_id") is not None:
+        require_record(db, User, changes["assignee_id"], "Assignee")
+    organization_id = changes.get("organization_id", ticket.organization_id)
+    contact_id = changes.get("contact_id", ticket.contact_id)
+    organization = require_record(db, Organization, organization_id, "Organization")
+    contact = require_record(db, Contact, contact_id, "Contact")
+    if contact and organization and contact.organization_id != organization.id:
+        raise HTTPException(422, "The selected contact does not belong to the selected organization")
+    if changes.get("status") in {"resolved", "closed"} and not (changes.get("resolution") or ticket.resolution):
+        raise HTTPException(422, "Add resolution details before resolving or closing this ticket")
+
+    previous_assignee = ticket.assignee_id
+    set_fields(ticket, changes)
+    if ticket.assignee_id and ticket.assignee_id != previous_assignee:
+        db.add(Notification(
+            user_id=ticket.assignee_id,
+            title="Support ticket assigned",
+            message=f"You were assigned: {ticket.subject}",
+            related_type="support_ticket",
+            related_id=ticket.id,
+        ))
+    audit(db, user, "support_ticket.updated", "support_ticket", ticket.id, ",".join(changes.keys()))
+    db.commit()
+    db.refresh(ticket)
+    return ticket
 
 
 @router.get("/directory/users")

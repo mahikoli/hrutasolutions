@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, func
@@ -7,13 +7,16 @@ from ..database import get_db
 from ..models import (User, Lead, Organization, Contact, Opportunity, Activity, Task,
                       AuditLog, PipelineHistory, Notification, InternshipApplication,
                       Enrollment, TrainingBatch, Partner, Project, ProjectMilestone,
-                      Invoice, PaymentTransaction, Refund)
+                      Invoice, PaymentTransaction, Refund, DocumentReference, SupportTicket,
+                      EmployeeProfile)
 from ..schemas import (LeadCreate, LeadUpdate, LeadOut, OrganizationCreate, ContactCreate,
-                       OpportunityCreate, OpportunityUpdate, TaskCreate, TaskUpdate, ActivityCreate)
+                       OrganizationUpdate, ContactUpdate, OpportunityCreate, OpportunityUpdate,
+                       TaskCreate, TaskUpdate, ActivityCreate)
 from ..security import get_current_user, require_roles
 
 router = APIRouter(tags=["CRM"])
 ADMIN = ("Super Admin",)
+MANAGEMENT = ("Super Admin", "Management")
 SALES = ("Super Admin", "Management", "Sales / Business Development")
 TASK_ROLES = ("Super Admin", "Management", "Sales / Business Development", "Internship Coordinator", "Training Coordinator", "Project / Team Manager", "Employee / Intern")
 
@@ -68,19 +71,84 @@ def update_lead(lead_id: int, data: LeadUpdate, db: Session = Depends(get_db), u
     changes = data.model_dump(exclude_unset=True)
     if "owner_id" in changes and not roles.intersection({"Super Admin", "Management"}):
         raise HTTPException(403, "Only managers can reassign leads")
+    if changes.get("owner_id") is not None and not db.get(User, changes["owner_id"]):
+        raise HTTPException(404, "Lead owner not found")
+    if changes.get("email"):
+        duplicate = db.query(Lead).filter(Lead.id != lead.id, Lead.email.ilike(str(changes["email"]))).first()
+        if duplicate:
+            raise HTTPException(409, f"Email is already used by lead #{duplicate.id}")
+    if changes.get("phone"):
+        duplicate = db.query(Lead).filter(Lead.id != lead.id, Lead.phone == changes["phone"]).first()
+        if duplicate:
+            raise HTTPException(409, f"Phone number is already used by lead #{duplicate.id}")
     for key, value in changes.items(): setattr(lead, key, value)
     audit(db, user, "lead.updated", "lead", lead.id, ",".join(changes.keys())); db.commit(); db.refresh(lead)
     return lead
 
+@router.delete("/leads/{lead_id}", status_code=204)
+def delete_lead(lead_id: int, db: Session = Depends(get_db), user: User = Depends(require_roles(*SALES))):
+    lead = db.get(Lead, lead_id)
+    if not lead: raise HTTPException(404, "Lead not found")
+    roles = {r.name for r in user.roles}
+    if lead.owner_id != user.id and not roles.intersection({"Super Admin", "Management"}):
+        raise HTTPException(403, "Not permitted to delete this lead")
+
+    linked = any((
+        db.query(Opportunity.id).filter(Opportunity.lead_id == lead.id).first(),
+        db.query(Activity.id).filter(Activity.lead_id == lead.id).first(),
+        db.query(Task.id).filter(Task.lead_id == lead.id).first(),
+        db.query(DocumentReference.id).filter(DocumentReference.entity_type == "lead", DocumentReference.entity_id == lead.id).first(),
+    ))
+    if linked:
+        raise HTTPException(409, "This lead has linked activity, tasks, opportunities, or documents. Remove those links before deleting it.")
+
+    audit(db, user, "lead.deleted", "lead", lead.id, f"{lead.first_name} {lead.last_name or ''}".strip())
+    db.delete(lead)
+    db.commit()
+
 @router.post("/organizations", status_code=201)
 def create_organization(data: OrganizationCreate, db: Session = Depends(get_db), user: User = Depends(require_roles(*SALES))):
-    obj = Organization(**data.model_dump()); db.add(obj); db.flush(); audit(db,user,"organization.created","organization",obj.id); db.commit(); db.refresh(obj); return obj
+    if db.query(Organization.id).filter(Organization.name.ilike(data.name.strip())).first():
+        raise HTTPException(409, "An organization with this name already exists")
+    values = data.model_dump(); values["name"] = values["name"].strip()
+    obj = Organization(**values); db.add(obj); db.flush(); audit(db,user,"organization.created","organization",obj.id); db.commit(); db.refresh(obj); return obj
 
 @router.get("/organizations")
 def list_organizations(search: str | None = None, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Organization)
     if search: q = q.filter(Organization.name.ilike(f"%{search}%"))
     return q.order_by(Organization.name).offset((page-1)*page_size).limit(page_size).all()
+
+@router.patch("/organizations/{organization_id}")
+def update_organization(organization_id: int, data: OrganizationUpdate, db: Session = Depends(get_db), user: User = Depends(require_roles(*SALES))):
+    obj = db.get(Organization, organization_id)
+    if not obj: raise HTTPException(404, "Organization not found")
+    changes = data.model_dump(exclude_unset=True)
+    if changes.get("name"):
+        changes["name"] = changes["name"].strip()
+        duplicate = db.query(Organization.id).filter(Organization.id != obj.id, Organization.name.ilike(changes["name"])).first()
+        if duplicate: raise HTTPException(409, "An organization with this name already exists")
+    for key, value in changes.items(): setattr(obj, key, value)
+    audit(db, user, "organization.updated", "organization", obj.id, ",".join(changes.keys()))
+    db.commit(); db.refresh(obj)
+    return obj
+
+@router.delete("/organizations/{organization_id}", status_code=204)
+def delete_organization(organization_id: int, db: Session = Depends(get_db), user: User = Depends(require_roles(*MANAGEMENT))):
+    obj = db.get(Organization, organization_id)
+    if not obj: raise HTTPException(404, "Organization not found")
+    linked = any((
+        db.query(Contact.id).filter(Contact.organization_id == obj.id).first(),
+        db.query(Opportunity.id).filter(Opportunity.organization_id == obj.id).first(),
+        db.query(Invoice.id).filter(Invoice.organization_id == obj.id).first(),
+        db.query(Partner.id).filter(Partner.organization_id == obj.id).first(),
+        db.query(Project.id).filter(Project.organization_id == obj.id).first(),
+        db.query(SupportTicket.id).filter(SupportTicket.organization_id == obj.id).first(),
+        db.query(DocumentReference.id).filter(DocumentReference.entity_type == "organization", DocumentReference.entity_id == obj.id).first(),
+    ))
+    if linked: raise HTTPException(409, "This organization has linked records or documents and cannot be deleted")
+    audit(db, user, "organization.deleted", "organization", obj.id, obj.name)
+    db.delete(obj); db.commit()
 
 @router.post("/contacts", status_code=201)
 def create_contact(data: ContactCreate, db: Session = Depends(get_db), user: User = Depends(require_roles(*SALES))):
@@ -93,6 +161,33 @@ def list_contacts(search: str | None = None, organization_id: int | None = None,
     if search: q = q.filter(or_(Contact.first_name.ilike(f"%{search}%"), Contact.last_name.ilike(f"%{search}%"), Contact.email.ilike(f"%{search}%"), Contact.phone.ilike(f"%{search}%")))
     if organization_id: q = q.filter(Contact.organization_id == organization_id)
     return q.order_by(Contact.created_at.desc()).offset((page-1)*page_size).limit(page_size).all()
+
+@router.patch("/contacts/{contact_id}")
+def update_contact(contact_id: int, data: ContactUpdate, db: Session = Depends(get_db), user: User = Depends(require_roles(*SALES))):
+    obj = db.get(Contact, contact_id)
+    if not obj: raise HTTPException(404, "Contact not found")
+    changes = data.model_dump(exclude_unset=True)
+    if changes.get("organization_id") is not None and not db.get(Organization, changes["organization_id"]):
+        raise HTTPException(404, "Organization not found")
+    for key, value in changes.items(): setattr(obj, key, value)
+    audit(db, user, "contact.updated", "contact", obj.id, ",".join(changes.keys()))
+    db.commit(); db.refresh(obj)
+    return obj
+
+@router.delete("/contacts/{contact_id}", status_code=204)
+def delete_contact(contact_id: int, db: Session = Depends(get_db), user: User = Depends(require_roles(*MANAGEMENT))):
+    obj = db.get(Contact, contact_id)
+    if not obj: raise HTTPException(404, "Contact not found")
+    linked = any((
+        db.query(Opportunity.id).filter(Opportunity.contact_id == obj.id).first(),
+        db.query(Activity.id).filter(Activity.contact_id == obj.id).first(),
+        db.query(Partner.id).filter(Partner.primary_contact_id == obj.id).first(),
+        db.query(SupportTicket.id).filter(SupportTicket.contact_id == obj.id).first(),
+        db.query(DocumentReference.id).filter(DocumentReference.entity_type == "contact", DocumentReference.entity_id == obj.id).first(),
+    ))
+    if linked: raise HTTPException(409, "This contact has linked records or documents and cannot be deleted")
+    audit(db, user, "contact.deleted", "contact", obj.id, f"{obj.first_name} {obj.last_name or ''}".strip())
+    db.delete(obj); db.commit()
 
 @router.post("/opportunities", status_code=201)
 def create_opportunity(data: OpportunityCreate, db: Session = Depends(get_db), user: User = Depends(require_roles(*SALES))):
@@ -247,13 +342,21 @@ def dashboard_summary(db: Session = Depends(get_db), user: User = Depends(get_cu
     if not admin:
         projects = projects.filter(Project.project_manager_id == user.id)
         milestones = milestones.filter(Project.project_manager_id == user.id)
+    total_leads = leads_q.count()
+    converted_leads = leads_q.filter(Lead.status == "converted").count()
+    today = date.today()
+    current_month_start = date(today.year, today.month, 1)
+    next_month_start = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
     total_invoices = db.query(func.coalesce(func.sum(Invoice.amount), 0)).scalar()
     total_payments = db.query(func.coalesce(func.sum(PaymentTransaction.amount), 0)).filter(PaymentTransaction.status == "received").scalar()
     total_refunds = db.query(func.coalesce(func.sum(Refund.amount), 0)).filter(Refund.status == "processed").scalar()
     net_received = max(Decimal(total_payments) - Decimal(total_refunds), Decimal("0"))
     outstanding = max(Decimal(total_invoices) - net_received, Decimal("0"))
     return {
-      "leads_total": leads_q.count(),
+      "leads_total": total_leads,
+      "clients_total": db.query(Organization).filter(Organization.organization_type == "client").count() if roles.intersection({"Super Admin", "Management", "Sales / Business Development"}) else None,
+      "employees_total": db.query(EmployeeProfile).join(User, EmployeeProfile.user_id == User.id).filter(User.is_active.is_(True)).count() if admin else None,
+      "lead_conversion_rate": round((converted_leads / total_leads) * 100, 1) if total_leads else 0,
       "active_leads": leads_q.filter(Lead.status.notin_(["converted", "lost"])).count(),
       "leads_due_for_follow_up": leads_q.filter(Lead.next_follow_up_at <= datetime.utcnow(), Lead.status.notin_(["converted", "lost"])).count(),
       "opportunities_open": opp_q.filter(Opportunity.stage.notin_(["won", "lost"])).count(),
@@ -270,4 +373,124 @@ def dashboard_summary(db: Session = Depends(get_db), user: User = Depends(get_cu
       "invoiced_amount": str(total_invoices) if finance_visible else None,
       "payments_received": str(net_received) if finance_visible else None,
       "outstanding_amount": str(outstanding) if finance_visible else None,
+      "monthly_revenue": str(max(
+          Decimal(db.query(func.coalesce(func.sum(PaymentTransaction.amount), 0)).filter(
+              PaymentTransaction.status == "received",
+              PaymentTransaction.payment_date >= current_month_start,
+              PaymentTransaction.payment_date < next_month_start,
+          ).scalar()) - Decimal(db.query(func.coalesce(func.sum(Refund.amount), 0)).filter(
+              Refund.status == "processed",
+              Refund.processed_at >= datetime.combine(current_month_start, time.min),
+              Refund.processed_at < datetime.combine(next_month_start, time.min),
+          ).scalar()),
+          Decimal("0"),
+      )) if finance_visible else None,
+    }
+
+
+@router.get("/dashboard/analytics")
+def dashboard_analytics(months: int = Query(6, ge=3, le=12), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    roles = {role.name for role in user.roles}
+    is_management = bool(roles.intersection({"Super Admin", "Management"}))
+    can_sales = bool(roles.intersection(set(SALES)))
+    can_finance = bool(roles.intersection({"Super Admin", "Management", "Finance / Accounts"}))
+    can_projects = bool(roles.intersection({"Super Admin", "Management", "Project / Team Manager"}))
+
+    today = date.today()
+    month_start = date(today.year, today.month, 1)
+    month_starts = [month_start]
+    for _ in range(months - 1):
+        last = month_starts[-1]
+        month_starts.append(date(last.year - 1, 12, 1) if last.month == 1 else date(last.year, last.month - 1, 1))
+    month_starts.reverse()
+    month_after_range = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
+    labels = [month.strftime("%b") for month in month_starts]
+    month_keys = [month.strftime("%Y-%m") for month in month_starts]
+
+    revenue_monthly = None
+    if can_finance:
+        collected = {key: Decimal("0") for key in month_keys}
+        refunded = {key: Decimal("0") for key in month_keys}
+        for paid_on, amount in db.query(PaymentTransaction.payment_date, PaymentTransaction.amount).filter(
+            PaymentTransaction.status == "received",
+            PaymentTransaction.payment_date >= month_starts[0],
+            PaymentTransaction.payment_date < month_after_range,
+        ).all():
+            collected[paid_on.strftime("%Y-%m")] += Decimal(amount)
+        refund_start = datetime.combine(month_starts[0], time.min)
+        refund_end = datetime.combine(month_after_range, time.min)
+        for processed_at, amount in db.query(Refund.processed_at, Refund.amount).filter(
+            Refund.status == "processed",
+            Refund.processed_at.is_not(None),
+            Refund.processed_at >= refund_start,
+            Refund.processed_at < refund_end,
+        ).all():
+            refunded[processed_at.strftime("%Y-%m")] += Decimal(amount)
+        revenue_monthly = [
+            {"month": key, "label": label, "collected": str(collected[key]), "refunded": str(refunded[key]),
+             "net_received": str(max(collected[key] - refunded[key], Decimal("0")))}
+            for key, label in zip(month_keys, labels)
+        ]
+
+    lead_conversion_monthly = None
+    lead_sources = None
+    if can_sales:
+        start = datetime.combine(month_starts[0], time.min)
+        end = datetime.combine(month_after_range, time.min)
+        lead_rows = db.query(Lead.created_at, Lead.status, Lead.source).filter(
+            Lead.created_at >= start, Lead.created_at < end,
+            *([] if is_management else [Lead.owner_id == user.id]),
+        ).all()
+        cohort_totals = {key: 0 for key in month_keys}
+        cohort_converted = {key: 0 for key in month_keys}
+        sources: dict[str, dict[str, int]] = {}
+        for created_at, status, source in lead_rows:
+            key = created_at.strftime("%Y-%m")
+            cohort_totals[key] += 1
+            if status == "converted":
+                cohort_converted[key] += 1
+            source_name = source or "Other"
+            source_row = sources.setdefault(source_name, {"leads": 0, "converted": 0})
+            source_row["leads"] += 1
+            source_row["converted"] += int(status == "converted")
+        lead_conversion_monthly = [
+            {"month": key, "label": label, "leads": cohort_totals[key], "converted": cohort_converted[key],
+             "conversion_rate": round(cohort_converted[key] * 100 / cohort_totals[key], 1) if cohort_totals[key] else 0}
+            for key, label in zip(month_keys, labels)
+        ]
+        lead_sources = [
+            {"source": source, "leads": values["leads"], "converted": values["converted"]}
+            for source, values in sorted(sources.items(), key=lambda item: (-item[1]["leads"], item[0].lower()))
+        ]
+
+    project_status_distribution = None
+    if can_projects:
+        project_query = db.query(Project.status, func.count(Project.id)).group_by(Project.status)
+        if not is_management:
+            project_query = project_query.filter(Project.project_manager_id == user.id)
+        project_status_distribution = [
+            {"status": status, "count": count}
+            for status, count in project_query.order_by(Project.status).all()
+        ]
+
+    sales_performance = None
+    if can_sales:
+        performance_query = db.query(
+            User.full_name, func.count(Opportunity.id), func.coalesce(func.sum(Opportunity.expected_value), 0)
+        ).join(Opportunity, Opportunity.owner_id == User.id).filter(Opportunity.stage == "won")
+        if not is_management:
+            performance_query = performance_query.filter(Opportunity.owner_id == user.id)
+        sales_performance = [
+            {"employee": name, "won_deals": count, "won_value": str(value)}
+            for name, count, value in performance_query.group_by(User.id, User.full_name)
+            .order_by(func.sum(Opportunity.expected_value).desc()).limit(10).all()
+        ]
+
+    return {
+        "months": months,
+        "revenue_monthly": revenue_monthly,
+        "lead_conversion_monthly": lead_conversion_monthly,
+        "project_status_distribution": project_status_distribution,
+        "sales_performance": sales_performance,
+        "lead_sources": lead_sources,
     }

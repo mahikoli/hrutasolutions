@@ -1,10 +1,10 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-##ghfjfhfekejfkefk###
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./hruta_onecrm.db"
     secret_key: str = "CHANGE_ME_BEFORE_DEPLOYMENT"
+    auto_create_schema: bool = True
     access_token_expire_minutes: int = 60
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
     cors_origin_regex: str = r"^https://.*\.vercel\.app$"

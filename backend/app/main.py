@@ -13,8 +13,12 @@ DEFAULT_ROLES = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Convenient for local development. For production, use Alembic migrations instead.
-    Base.metadata.create_all(bind=engine)
+    if settings.secret_key in {"CHANGE_ME_BEFORE_DEPLOYMENT", "replace-with-a-long-random-secret-before-running"} or len(settings.secret_key) < 32:
+        raise RuntimeError("Set SECRET_KEY to a random value of at least 32 characters before starting the API.")
+    if settings.auto_create_schema:
+        # Keep create_all as a local development convenience. Deployed environments
+        # use the explicit Alembic migration command before starting the API.
+        Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         for name in DEFAULT_ROLES:
             if not db.query(Role).filter(Role.name == name).first(): db.add(Role(name=name))

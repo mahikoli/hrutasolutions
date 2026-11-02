@@ -30,6 +30,19 @@ class Role(Base):
     name: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
     users: Mapped[list[User]] = relationship(secondary=user_roles, back_populates="roles")
 
+
+class EmployeeProfile(TimestampMixin, Base):
+    __tablename__ = "employee_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    employee_code: Mapped[str | None] = mapped_column(String(40), unique=True, index=True)
+    department: Mapped[str | None] = mapped_column(String(120))
+    designation: Mapped[str | None] = mapped_column(String(120))
+    phone: Mapped[str | None] = mapped_column(String(30))
+    joining_date: Mapped[date | None] = mapped_column(Date)
+    manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+
+
 class Organization(TimestampMixin, Base):
     __tablename__ = "organizations"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -437,6 +450,21 @@ class ProjectTask(Base):
     status: Mapped[str] = mapped_column(String(30), default="todo", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class SupportTicket(TimestampMixin, Base):
+    __tablename__ = "support_tickets"
+    __table_args__ = (Index("ix_support_tickets_status_assignee", "status", "assignee_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True, nullable=False)
+    assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    priority: Mapped[str] = mapped_column(String(20), default="medium", nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="open", nullable=False)
+    resolution: Mapped[str | None] = mapped_column(Text)
 
 
 class Notification(Base):

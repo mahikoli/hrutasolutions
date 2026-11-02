@@ -37,7 +37,7 @@ cp .env.example .env
 
 Edit `.env` to replace `SECRET_KEY` with a long random secret. Set `DATABASE_URL` only when using PostgreSQL or Supabase; URL-encode special characters in database passwords. Supabase connection options depend on whether you use direct or pooler connections. Do not commit `.env` to GitHub.
 
-The API uses SQLAlchemy models in `app/models.py` as its executable schema. `sql/postgresql_schema.sql` is a separate proposal design with UUID-based IDs; do not run it against the same database used by this API.
+The API uses SQLAlchemy models in `app/models.py` as its executable schema. `sql/postgresql_schema.sql` is a separate proposal design with UUID-based IDs; do not run it against the same database used by this API. Alembic manages deployed schema changes through `migrations/`.
 
 ## 3. Run
 
@@ -59,7 +59,9 @@ npm run dev
 
 Open the Vite URL shown in the terminal (normally `http://localhost:5173`). The frontend connects to the API at `http://127.0.0.1:8000/api/v1` by default. Set `VITE_API_BASE_URL` in `frontend/.env` to change it.
 
-The app creates missing tables and seeds role names at startup for local development. `create_all` does not migrate existing table columns; use reviewed Alembic migrations for schema changes in a deployed environment. Before production, configure TLS, hosting, backups, private object storage, and organization-approved retention controls.
+For local development, the app creates missing tables and seeds role names at startup (`AUTO_CREATE_SCHEMA=true`). Apply migrations from this directory with `alembic upgrade head`; set `AUTO_CREATE_SCHEMA=false` when the database schema is managed by migrations. The initial revision creates missing tables and safely adopts a database already initialized by the prior `create_all` startup. It does not rewrite existing columns. Keep that baseline immutable and make later schema changes in new reviewed Alembic revisions; autogenerate a candidate with `alembic revision --autogenerate -m "describe the change"`, review it, then apply with `alembic upgrade head`.
+
+The hosted Render service runs `alembic upgrade head` before starting the API and disables startup `create_all`. Before production, configure TLS, hosting, backups, private object storage, and organization-approved retention controls.
 
 ## 4. Bootstrap the first administrator
 
@@ -112,4 +114,4 @@ Use a parameterized query and replace `:user_id` with the verified account ID. R
 - API permission checks are server-side; frontend hiding is not security.
 - Finance endpoints are restricted to Finance / Accounts, Management, or Super Admin; refund decisions require Management or Super Admin.
 - Non-manager users see only their own leads/opportunities and their assigned/created tasks in list endpoints.
-- This is a development starter, not production-certified. Add rate limiting, password reset, refresh/revocation strategy, strict field/state validation, migration tooling, automated tests, and organization-approved privacy/retention controls before deployment.
+- This is a development starter, not production-certified. Add rate limiting, password reset, refresh/revocation strategy, broader automated coverage, and organization-approved privacy/retention controls before deployment.

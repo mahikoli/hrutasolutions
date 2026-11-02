@@ -23,26 +23,26 @@ class LeadCreate(BaseModel):
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str | None = None
     email: EmailStr | None = None
-    phone: str | None = None
-    organization_name: str | None = None
-    source: str = "manual"
-    interest: str
-    priority: str = "medium"
-    status: str = "new"
+    phone: str | None = Field(default=None, max_length=30)
+    organization_name: str | None = Field(default=None, max_length=200)
+    source: str = Field(default="manual", min_length=1, max_length=60)
+    interest: str = Field(min_length=1, max_length=80)
+    priority: str = Field(default="medium", pattern="^(low|medium|high)$")
+    status: str = Field(default="new", pattern="^(new|contacted|qualified|unqualified|converted|lost)$")
     notes: str | None = None
     next_follow_up_at: datetime | None = None
     owner_id: int | None = None
 
 class LeadUpdate(BaseModel):
-    first_name: str | None = None
-    last_name: str | None = None
+    first_name: str | None = Field(default=None, min_length=1, max_length=100)
+    last_name: str | None = Field(default=None, max_length=100)
     email: EmailStr | None = None
-    phone: str | None = None
-    organization_name: str | None = None
-    source: str | None = None
-    interest: str | None = None
-    priority: str | None = None
-    status: str | None = None
+    phone: str | None = Field(default=None, max_length=30)
+    organization_name: str | None = Field(default=None, max_length=200)
+    source: str | None = Field(default=None, min_length=1, max_length=60)
+    interest: str | None = Field(default=None, min_length=1, max_length=80)
+    priority: str | None = Field(default=None, pattern="^(low|medium|high)$")
+    status: str | None = Field(default=None, pattern="^(new|contacted|qualified|unqualified|converted|lost)$")
     notes: str | None = None
     next_follow_up_at: datetime | None = None
     owner_id: int | None = None
@@ -73,6 +73,14 @@ class OrganizationCreate(BaseModel):
     address: str | None = None
     notes: str | None = None
 
+class OrganizationUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    organization_type: str | None = Field(default=None, max_length=40)
+    website: str | None = Field(default=None, max_length=255)
+    industry: str | None = Field(default=None, max_length=100)
+    address: str | None = None
+    notes: str | None = None
+
 class ContactCreate(BaseModel):
     organization_id: int | None = None
     first_name: str
@@ -80,6 +88,14 @@ class ContactCreate(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     designation: str | None = None
+
+class ContactUpdate(BaseModel):
+    organization_id: int | None = None
+    first_name: str | None = Field(default=None, min_length=1, max_length=100)
+    last_name: str | None = Field(default=None, max_length=100)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=30)
+    designation: str | None = Field(default=None, max_length=120)
 
 class OpportunityCreate(BaseModel):
     name: str
