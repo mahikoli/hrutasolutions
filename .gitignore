@@ -33,3 +33,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Keep the safe backend configuration template versioned
+!backend/.env.example
