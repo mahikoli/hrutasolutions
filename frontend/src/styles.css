@@ -4485,3 +4485,204 @@ tbody tr:hover td {
   .auth-form-wrap h2 { font-size: 27px; }
   .auth-subtitle { margin-bottom: 22px; }
 }
+
+/* Keep every workspace section inside the phone viewport. */
+@media (max-width: 768px) {
+  .app-shell,
+  .main-area,
+  .page-content {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .topbar {
+    min-width: 0;
+    gap: 8px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .breadcrumb {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .breadcrumb strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-right {
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+
+  .page-content {
+    padding: 18px 12px 32px;
+  }
+
+  .report-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-metric {
+    min-width: 0;
+  }
+
+  .report-metric strong {
+    overflow-wrap: anywhere;
+  }
+
+  .table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-foot {
+    height: auto;
+    min-height: 42px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .modal-backdrop {
+    padding: 12px;
+  }
+
+  .create-modal {
+    width: 100%;
+    padding: 20px 16px;
+  }
+
+  .record-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .field-wide {
+    grid-column: auto;
+  }
+
+  .modal-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar {
+    gap: 6px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .breadcrumb > span:first-child,
+  .breadcrumb .crumb-slash {
+    display: none;
+  }
+
+  .topbar-right {
+    gap: 4px;
+  }
+
+  .topbar-right > .icon-button,
+  .topbar-right > .profile-menu-wrap > .top-profile-trigger,
+  .menu-button {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .topbar-right > .profile-menu-wrap > .top-profile-trigger {
+    border: 0;
+    background: transparent;
+  }
+
+  .topbar-right > .profile-menu-wrap > .top-profile-trigger > svg {
+    display: none;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .stat-card {
+    min-height: 132px;
+    padding: 12px;
+  }
+
+  .stat-label,
+  .stat-value {
+    overflow-wrap: anywhere;
+  }
+
+  .stat-value {
+    font-size: 22px;
+  }
+
+  .report-metric-grid {
+    gap: 10px;
+  }
+
+  .report-metric {
+    padding: 12px;
+  }
+
+  .report-metric strong {
+    font-size: 18px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .panel-heading {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .notification-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .notification-copy {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .notification-actions {
+    width: 100%;
+    padding-left: 46px;
+  }
+
+  .export-row,
+  .admin-user-row {
+    flex-wrap: wrap;
+  }
+
+  .admin-user-main {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .config-row code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .toast {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    justify-content: center;
+  }
+}
