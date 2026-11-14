@@ -1,5 +1,6 @@
 from datetime import datetime, date
 from decimal import Decimal
+from typing import Literal
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
 class UserCreate(BaseModel):
@@ -11,6 +12,7 @@ class UserOut(BaseModel):
     id: int
     full_name: str
     email: EmailStr
+    account_type: Literal["author", "employee"] = "employee"
     is_active: bool
     roles: list[str] = []
     model_config = ConfigDict(from_attributes=True)

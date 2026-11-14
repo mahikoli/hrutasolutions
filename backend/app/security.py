@@ -31,8 +31,7 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
     user = db.get(User, user_id)
     if not user or not user.is_active:
         raise unauth
-    roles = {role.name for role in user.roles}
-    employee_only = "Employee / Intern" in roles and not roles.intersection({"Super Admin", "Management"})
+    employee_only = user.account_type == "employee"
     if employee_only:
         path = request.url.path
         method = request.method.upper()

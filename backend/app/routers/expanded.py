@@ -88,6 +88,7 @@ def employee_view(profile: EmployeeProfile, user: User):
         "user_id": profile.user_id,
         "full_name": user.full_name,
         "email": user.email,
+        "account_type": user.account_type,
         "roles": [role.name for role in user.roles],
         "is_active": user.is_active,
         "employee_code": profile.employee_code,
@@ -167,6 +168,7 @@ def onboard_employee(
         full_name=data.full_name.strip(),
         email=email,
         password_hash=hash_password(data.password),
+        account_type="employee",
     )
     employee.roles.append(employee_role)
     db.add(employee)
@@ -1104,7 +1106,7 @@ def list_users(search: str | None = None, db: Session = Depends(get_db), user: U
     query = db.query(User)
     if search:
         like = f"%{search}%"; query = query.filter(or_(User.full_name.ilike(like), User.email.ilike(like)))
-    return [{"id": person.id, "full_name": person.full_name, "email": person.email, "is_active": person.is_active, "roles": [role.name for role in person.roles]} for person in query.order_by(User.full_name).limit(500).all()]
+    return [{"id": person.id, "full_name": person.full_name, "email": person.email, "account_type": person.account_type, "is_active": person.is_active, "roles": [role.name for role in person.roles]} for person in query.order_by(User.full_name).limit(500).all()]
 
 
 @router.get("/admin/roles")
@@ -1123,10 +1125,11 @@ def update_user_roles(user_id: int, data: RoleAssignment, db: Session = Depends(
         other_admins = db.query(User).join(User.roles).filter(Role.name == "Super Admin", User.is_active.is_(True), User.id != target.id).count()
         if not other_admins: raise HTTPException(409, "At least one active Super Admin must remain")
     target.roles = roles
+    target.account_type = "author" if found.intersection({"Super Admin", "Management"}) else "employee"
     if data.is_active is not None: target.is_active = data.is_active
-    audit(db, user, "user.roles_updated", "user", target.id, ",".join(sorted(found)))
+    audit(db, user, "user.roles_updated", "user", target.id, f"account_type={target.account_type};roles={','.join(sorted(found))}")
     db.commit(); db.refresh(target)
-    return {"id": target.id, "full_name": target.full_name, "email": target.email, "is_active": target.is_active, "roles": [role.name for role in target.roles]}
+    return {"id": target.id, "full_name": target.full_name, "email": target.email, "account_type": target.account_type, "is_active": target.is_active, "roles": [role.name for role in target.roles]}
 
 
 @router.get("/admin/audit-logs")

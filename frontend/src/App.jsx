@@ -342,7 +342,7 @@ const THEME_OPTIONS = [
 ];
 const DEFAULT_APPEARANCE = { theme: "modern", mode: "light", accent: "" };
 const AUTHOR_ROLES = ["Super Admin", "Management"];
-const isEmployeeOnly = (account) => account?.roles?.includes("Employee / Intern") && !account.roles.some((role) => AUTHOR_ROLES.includes(role));
+const isEmployeeOnly = (account) => account?.account_type ? account.account_type === "employee" : account?.roles?.includes("Employee / Intern") && !account.roles.some((role) => AUTHOR_ROLES.includes(role));
 
 const EMPTY_DATA = {
   summary: null, analytics: null, reportSummary: null, leads: [], organizations: [], contacts: [], opportunities: [], proposals: [],
@@ -1050,7 +1050,7 @@ function NotificationsPage({ rows, token, onReload }) {
 function AdminUsersPage({ rows, roles, onManage }) {
   return <>
     <div className="data-page-head"><div><span className="eyebrow">ADMINISTRATION / ACCESS</span><h1>User access</h1><p>Assign workspace roles and control which modules each person can use.</p></div><span className="result-count">{rows.length} users</span></div>
-    <section className="panel admin-user-list">{rows.length ? rows.map((person) => <div className="admin-user-row" key={person.id}><div className="avatar avatar-small">{initials(person.full_name)}</div><div className="admin-user-main"><strong>{person.full_name}</strong><span>{person.email}</span><div className="role-chips">{person.roles.map((role) => <span key={role}>{role}</span>)}</div></div><span className={`status-pill ${person.is_active ? "green" : "red"}`}>{person.is_active ? "active" : "disabled"}</span><button className="soft-button" onClick={() => onManage(person)}><Pencil size={14} />Manage access</button></div>) : <div className="table-empty"><strong>No users found</strong><span>Registered users appear here.</span></div>}</section>
+    <section className="panel admin-user-list">{rows.length ? rows.map((person) => <div className="admin-user-row" key={person.id}><div className="avatar avatar-small">{initials(person.full_name)}</div><div className="admin-user-main"><strong>{person.full_name}</strong><span>{person.email}</span><div className="role-chips"><span>{person.account_type === "author" ? "Author" : "Employee"}</span>{person.roles.map((role) => <span key={role}>{role}</span>)}</div></div><span className={`status-pill ${person.is_active ? "green" : "red"}`}>{person.is_active ? "active" : "disabled"}</span><button className="soft-button" onClick={() => onManage(person)}><Pencil size={14} />Manage access</button></div>) : <div className="table-empty"><strong>No users found</strong><span>Registered users appear here.</span></div>}</section>
     <div className="admin-note"><ShieldCheck size={16} />{roles.length} roles are available. Registration assigns the basic Employee / Intern role by default.</div>
   </>;
 }

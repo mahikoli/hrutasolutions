@@ -297,7 +297,7 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user: User = De
 @router.get("/tasks")
 def list_tasks(status: str | None = None, overdue_only: bool = False, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Task); roles = {r.name for r in user.roles}
-    employee_only = "Employee / Intern" in roles and not roles.intersection({"Super Admin", "Management"})
+    employee_only = user.account_type == "employee"
     if employee_only:
         q = q.filter(Task.assignee_id == user.id)
     elif not roles.intersection({"Super Admin", "Management", "Project / Team Manager"}):
@@ -311,7 +311,7 @@ def update_task(task_id: int, data: TaskUpdate, db: Session = Depends(get_db), u
     obj = db.get(Task, task_id)
     if not obj: raise HTTPException(404, "Task not found")
     roles = {r.name for r in user.roles}
-    employee_only = "Employee / Intern" in roles and not roles.intersection({"Super Admin", "Management"})
+    employee_only = user.account_type == "employee"
     if employee_only and obj.assignee_id != user.id:
         raise HTTPException(403, "Employees can only update tasks assigned to them")
     if user.id not in (obj.assignee_id, obj.created_by_id) and not roles.intersection({"Super Admin", "Management", "Project / Team Manager"}): raise HTTPException(403, "Not permitted to update this task")
