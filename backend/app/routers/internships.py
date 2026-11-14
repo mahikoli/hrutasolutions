@@ -1450,7 +1450,11 @@ def map_sheet_row(headers: list[str], values: list[str], row_number: int) -> dic
         "department": ("department", "branch", "stream"),
         "current_academic_year": ("current_academic_year", "academic_year", "year_of_study"),
         "graduation_year": ("graduation_year", "year_of_graduation"),
-        "selected_domain": ("internship_domain", "selected_internship_domain", "domain", "internship_interest"),
+        "selected_domain": (
+            "selected_domain", "internship_domain", "selected_internship_domain",
+            "preferred_domain", "domain", "domain_of_interest", "area_of_interest",
+            "internship_interest",
+        ),
         "preferred_duration_weeks": ("duration_weeks", "preferred_duration", "internship_duration"),
         "preferred_mode": ("training_mode", "preferred_mode", "mode"),
         "technical_skills": ("technical_skills", "skills", "technical_skill"),
@@ -1462,6 +1466,16 @@ def map_sheet_row(headers: list[str], values: list[str], row_number: int) -> dic
         "payment_transaction_id": ("payment_transaction_id", "transaction_id", "payment_reference"),
     }
     mapped = {key: next((row.get(alias) for alias in candidates if row.get(alias)), None) for key, candidates in aliases.items()}
+    if not mapped.get("selected_domain"):
+        # Google Forms often uses a longer question title such as
+        # "Which internship domain are you interested in?". Keep those labels
+        # working without requiring the exact header to be "Domain".
+        mapped["selected_domain"] = next(
+            (value for header, value in row.items() if "domain" in header and value),
+            None,
+        )
+    if mapped.get("selected_domain"):
+        mapped["selected_domain"] = str(mapped["selected_domain"]).strip() or None
     mapped["full_name"] = mapped.get("full_name") or ""
     mapped["email"] = mapped.get("email") or ""
     mapped["google_form_response_id"] = mapped.get("google_form_response_id") or f"sheet-row-{row_number}"
@@ -1507,6 +1521,12 @@ def import_form_row(db: Session, row: dict, user_id: int | None) -> tuple[bool, 
     if duplicate:
         if not duplicate.google_form_response_id and response_id:
             duplicate.google_form_response_id = response_id
+        domain = str(row.get("selected_domain") or "").strip()
+        if domain and not duplicate.selected_domain:
+            duplicate.selected_domain = domain[:150]
+            lead = db.get(Lead, duplicate.lead_id) if duplicate.lead_id else None
+            if lead and (not lead.interest or lead.interest.lower() == "internship"):
+                lead.interest = domain[:80]
         duplicate.sync_status = "synced"
         duplicate.registration_source = "google_form"
         return False, True

@@ -21,7 +21,7 @@ from ..extended_schemas import (
     ProjectUpdate as ProjectPatch, RefundCreate, RefundDecision, RoleAssignment,
     SalesProposalCreate, SalesProposalUpdate, TrainerCreate, TrainingAttendanceCreate,
     TrainingBatchCreate, TrainingBatchUpdate, TrainingSessionCreate, CourseCreate,
-    CourseUpdate, SupportTicketCreate, SupportTicketUpdate, EmployeeProfileCreate,
+    CourseUpdate, SupportTicketCreate, SupportTicketUpdate, EmployeeOnboardCreate, EmployeeProfileCreate,
     EmployeeProfileUpdate,
 )
 from ..models import (
@@ -34,7 +34,7 @@ from ..models import (
     PaymentTransaction, Organization, Contact,
     SupportTicket, EmployeeProfile,
 )
-from ..security import get_current_user, require_roles
+from ..security import get_current_user, hash_password, require_roles
 
 router = APIRouter(tags=["Business modules"])
 
@@ -139,6 +139,51 @@ def create_employee_profile(
     db.add(profile)
     db.flush()
     audit(db, user, "employee_profile.created", "employee_profile", profile.id)
+    db.commit()
+    db.refresh(profile)
+    return employee_view(profile, employee)
+
+
+@router.post("/employees/onboard", status_code=201)
+def onboard_employee(
+    data: EmployeeOnboardCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(*EMPLOYEE_MANAGERS)),
+):
+    email = str(data.email).strip().lower()
+    if db.query(User.id).filter(func.lower(User.email) == email).first():
+        raise HTTPException(409, "An account with this email already exists")
+    if data.employee_code and db.query(EmployeeProfile.id).filter(EmployeeProfile.employee_code == data.employee_code).first():
+        raise HTTPException(409, "Employee code is already in use")
+    require_record(db, User, data.manager_id, "Manager")
+
+    employee_role = db.query(Role).filter(Role.name == "Employee / Intern").first()
+    if employee_role is None:
+        employee_role = Role(name="Employee / Intern")
+        db.add(employee_role)
+        db.flush()
+
+    employee = User(
+        full_name=data.full_name.strip(),
+        email=email,
+        password_hash=hash_password(data.password),
+    )
+    employee.roles.append(employee_role)
+    db.add(employee)
+    db.flush()
+
+    profile = EmployeeProfile(
+        user_id=employee.id,
+        employee_code=data.employee_code,
+        department=data.department,
+        designation=data.designation,
+        phone=data.phone,
+        joining_date=data.joining_date,
+        manager_id=data.manager_id,
+    )
+    db.add(profile)
+    db.flush()
+    audit(db, user, "employee.onboarded", "employee_profile", profile.id, f"user_id={employee.id}")
     db.commit()
     db.refresh(profile)
     return employee_view(profile, employee)

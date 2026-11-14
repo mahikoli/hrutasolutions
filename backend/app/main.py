@@ -19,10 +19,12 @@ async def lifespan(app: FastAPI):
         # Keep create_all as a local development convenience. Deployed environments
         # use the explicit Alembic migration command before starting the API.
         Base.metadata.create_all(bind=engine)
-    with SessionLocal() as db:
-        for name in DEFAULT_ROLES:
-            if not db.query(Role).filter(Role.name == name).first(): db.add(Role(name=name))
-        db.commit()
+        # Local development can seed roles here. Deployed environments seed them
+        # in an Alembic migration so database work does not delay HTTP port binding.
+        with SessionLocal() as db:
+            existing_roles = {name for (name,) in db.query(Role.name).all()}
+            db.add_all(Role(name=name) for name in DEFAULT_ROLES if name not in existing_roles)
+            db.commit()
     yield
 
 app = FastAPI(title="HRUTA OneCRM API", version="1.0.0", description="Role-based sales, internship, training, partnership, finance, and project CRM API", lifespan=lifespan)

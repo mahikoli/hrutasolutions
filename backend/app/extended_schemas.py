@@ -385,6 +385,18 @@ class EmployeeProfileCreate(RecordModel):
     manager_id: int | None = None
 
 
+class EmployeeOnboardCreate(RecordModel):
+    full_name: str = Field(min_length=2, max_length=150)
+    email: EmailStr
+    password: str = Field(min_length=10, max_length=128)
+    employee_code: str | None = Field(default=None, max_length=40)
+    department: str | None = Field(default=None, max_length=120)
+    designation: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=30)
+    joining_date: date | None = None
+    manager_id: int | None = None
+
+
 class EmployeeProfileUpdate(RecordModel):
     employee_code: str | None = Field(default=None, max_length=40)
     department: str | None = Field(default=None, max_length=120)

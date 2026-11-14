@@ -306,6 +306,15 @@ const FORM_META = {
     { name: "phone", label: "Phone" }, { name: "joining_date", label: "Joining date", type: "date" },
     { name: "manager_id", label: "Reports to", relation: "users" },
   ] },
+  employeeOnboard: { title: "Add employee", endpoint: "/employees/onboard", fields: [
+    { name: "full_name", label: "Full name", required: true },
+    { name: "email", label: "Username / work email", type: "email", required: true },
+    { name: "password", label: "Initial password (at least 10 characters)", type: "password", minLength: 10, required: true, placeholder: "Set a password for the employee" },
+    { name: "employee_code", label: "Employee ID" },
+    { name: "department", label: "Department" }, { name: "designation", label: "Designation" },
+    { name: "phone", label: "Phone" }, { name: "joining_date", label: "Joining date", type: "date" },
+    { name: "manager_id", label: "Reports to", relation: "users" },
+  ] },
   refund: { title: "Request a refund", endpoint: "/refunds", fields: [
     { name: "payment_id", label: "Payment", relation: "payments", required: true }, { name: "amount", label: "Refund amount", type: "number", required: true },
     { name: "reason", label: "Reason", type: "textarea", required: true, wide: true },
@@ -332,6 +341,8 @@ const THEME_OPTIONS = [
   { id: "emerald", name: "Emerald Business", description: "Forest green with a fresh emerald accent", accent: "#059669" },
 ];
 const DEFAULT_APPEARANCE = { theme: "modern", mode: "light", accent: "" };
+const AUTHOR_ROLES = ["Super Admin", "Management"];
+const isEmployeeOnly = (account) => account?.roles?.includes("Employee / Intern") && !account.roles.some((role) => AUTHOR_ROLES.includes(role));
 
 const EMPTY_DATA = {
   summary: null, analytics: null, reportSummary: null, leads: [], organizations: [], contacts: [], opportunities: [], proposals: [],
@@ -463,7 +474,7 @@ function App() {
   }, [token]);
 
   useEffect(() => {
-    if (token && user) loadWorkspace(token, user);
+    if (token && user && !isEmployeeOnly(user)) loadWorkspace(token, user);
   }, [token, user, loadWorkspace]);
 
   useEffect(() => {
@@ -533,8 +544,8 @@ function App() {
     setToken(""); setUser(null); setData(EMPTY_DATA); setPage("overview");
   };
 
-  const authenticate = async (email, password) => {
-    const form = new URLSearchParams({ username: email, password });
+  const authenticate = async (email, password, accountType) => {
+    const form = new URLSearchParams({ username: email, password, account_type: accountType });
     const result = await request("/auth/login", { method: "POST", form });
     localStorage.setItem("onecrm_token", result.access_token);
     setToken(result.access_token);
@@ -603,6 +614,7 @@ function App() {
   if (booting) return <div className="screen-loader"><span className="loader-mark">H</span><span>Opening your workspace…</span></div>;
   if (!token) return <AuthScreen onLogin={authenticate} onRegister={register} />;
   if (!user) return <div className="screen-loader"><span className="loader-mark">H</span><span>Loading your profile…</span></div>;
+  if (isEmployeeOnly(user)) return <EmployeeTasksDashboard token={token} user={user} onLogout={logout} />;
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -666,7 +678,7 @@ function App() {
             page === "documents" ? <DocumentsPage data={data} token={token} roles={roles} /> :
             page === "adminUsers" ? <AdminUsersPage rows={data.adminUsersData} roles={data.roles} onManage={setManagedUser} /> :
             page === "configuration" ? <ConfigurationPage rows={data.configuration} token={token} onReload={() => loadWorkspace(token, user)} roles={roles} appearance={appearance} onAppearanceChange={setAppearance} /> :
-            <DataPage page={page} data={data} search={search} onSearch={setSearch} onCreate={() => { setEditingRecord(null); setModal(meta.action); }} canCreate={canCreatePage(page)} busy={dataBusy} onRefresh={refresh} onUpdateStatus={updateStatus} onRefundAction={updateStatus} onConvertOpportunity={convertOpportunity} onEditRecord={(record, kind) => { setEditingRecord(record); setModal(kind); }} onDeleteRecord={deleteRecord} user={user} />
+            <DataPage page={page} data={data} search={search} onSearch={setSearch} onCreate={() => { setEditingRecord(null); setModal(page === "employees" ? "employeeOnboard" : meta.action); }} canCreate={canCreatePage(page)} busy={dataBusy} onRefresh={refresh} onUpdateStatus={updateStatus} onRefundAction={updateStatus} onConvertOpportunity={convertOpportunity} onEditRecord={(record, kind) => { setEditingRecord(record); setModal(kind); }} onDeleteRecord={deleteRecord} user={user} />
           }
         </div>
       </main>
@@ -681,6 +693,7 @@ function App() {
 
 function AuthScreen({ onLogin, onRegister }) {
   const [mode, setMode] = useState("login");
+  const [accountType, setAccountType] = useState("author");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -692,12 +705,13 @@ function AuthScreen({ onLogin, onRegister }) {
     const form = new FormData(formElement);
     const email = String(form.get("email") || "").trim().toLowerCase();
     const password = String(form.get("password") || "");
+    const selectedAccountType = String(form.get("account_type") || accountType);
     try {
       if (mode === "register") {
         await onRegister({ full_name: String(form.get("full_name") || "").trim(), email, password });
         setMode("login"); setError(""); setNotice("Account created. Sign in with your new credentials.");
         formElement.reset();
-      } else await onLogin(email, password);
+      } else await onLogin(email, password, selectedAccountType);
     } catch (reason) { setError(reason.message); }
     finally { setBusy(false); }
   };
@@ -724,7 +738,8 @@ function AuthScreen({ onLogin, onRegister }) {
         {notice && <div className="form-notice"><CheckCircle2 size={15} />{notice}</div>}
         <form onSubmit={submit} className="auth-form">
           {mode === "register" && <label className="field-label">Full name<div className="input-wrap"><UserRound size={17} /><input name="full_name" placeholder="Your name" autoComplete="name" minLength={2} required /></div></label>}
-          <label className="field-label">Work email<div className="input-wrap"><Mail size={17} /><input name="email" type="email" placeholder="you@company.com" autoComplete="email" required /></div></label>
+          {mode === "login" && <label className="field-label">Sign in as<select className="auth-account-select" name="account_type" value={accountType} onChange={(event) => setAccountType(event.target.value)}><option value="employee">Employee</option><option value="author">Author (CRM admin)</option></select></label>}
+          <label className="field-label">Username / work email<div className="input-wrap"><Mail size={17} /><input name="email" type="email" placeholder="you@company.com" autoComplete="email" required /></div></label>
           <label className="field-label">Password<div className="input-wrap"><LockKeyhole size={17} /><input name="password" type="password" placeholder="At least 10 characters" minLength={10} autoComplete={mode === "login" ? "current-password" : "new-password"} required /></div></label>
           <button className="primary-button auth-submit" disabled={busy}>{busy ? <span className="button-loader" /> : mode === "login" ? <>Sign in <ArrowRight size={17} /></> : <>Create account <ArrowRight size={17} /></>}</button>
         </form>
@@ -734,6 +749,61 @@ function AuthScreen({ onLogin, onRegister }) {
       <div className="auth-panel-foot"><span>Secure team access</span><span>·</span><span>One place to move forward</span></div>
     </div>
   </div>;
+}
+
+function EmployeeTasksDashboard({ token, user, onLogout }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(null);
+  const [error, setError] = useState("");
+
+  const loadTasks = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await request("/tasks", { token });
+      setTasks(Array.isArray(result) ? result : []);
+    } catch (reason) {
+      setError(reason.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  const updateTaskStatus = async (taskId, status) => {
+    setUpdating(taskId);
+    setError("");
+    try {
+      await request(`/tasks/${taskId}`, { method: "PATCH", token, body: { status } });
+      await loadTasks();
+    } catch (reason) {
+      setError(reason.message);
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  return <main className="employee-task-shell">
+    <header className="employee-task-topbar">
+      <div className="employee-task-brand"><img src="/hruta-logo-circle.png" alt="HRUTA Solutions" /><span><strong>HRUTA OneCRM</strong><small>Employee workspace</small></span></div>
+      <div className="employee-task-account"><span><strong>{user.full_name}</strong><small>{user.email}</small></span><button className="soft-button" onClick={onLogout}><LogOut size={15} />Sign out</button></div>
+    </header>
+    <section className="employee-task-content">
+      <div className="employee-task-heading"><div><span className="eyebrow">EMPLOYEE WORKSPACE</span><h1>My assigned tasks</h1><p>Only tasks assigned to you are shown here.</p></div><button className="soft-button" onClick={loadTasks} disabled={loading}><RefreshCw size={15} className={loading ? "spin-icon" : ""} />Refresh</button></div>
+      {error && <div className="employee-task-error" role="alert">{error}</div>}
+      <div className="employee-task-count">{tasks.length} {tasks.length === 1 ? "task" : "tasks"}</div>
+      {loading ? <div className="employee-task-empty">Loading your tasks…</div> : tasks.length ? <div className="employee-task-list">
+        {tasks.map((task) => <article className="employee-task-card" key={task.id}>
+          <div className="employee-task-card-head"><div><span className="employee-task-id">TASK #{task.id}</span><h2>{task.title}</h2></div><span className={`status-pill ${statusTone(task.status || "todo")}`}>{(task.status || "todo").replaceAll("_", " ")}</span></div>
+          {task.description && <p className="employee-task-description">{task.description}</p>}
+          <div className="employee-task-meta"><span className={`employee-task-priority priority-${task.priority || "medium"}`}>{task.priority || "medium"} priority</span><span>Due: {niceDate(task.due_at)}</span></div>
+          <label className="employee-task-status">Update status<select value={task.status || "todo"} disabled={updating === task.id} onChange={(event) => updateTaskStatus(task.id, event.target.value)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="blocked">Blocked</option><option value="done">Done</option></select></label>
+        </article>)}
+      </div> : <div className="employee-task-empty"><ListTodo size={23} /><strong>No tasks assigned yet</strong><span>Tasks assigned to you will appear here.</span></div>}
+    </section>
+  </main>;
 }
 
 function Dashboard({ data, user, canSell, onNavigate, onCreate, busy }) {
@@ -877,7 +947,7 @@ const STATUS_EDIT = {
   supportTickets: { endpoint: (r) => `/support-tickets/${r.id}`, field: "status", options: ["open", "in_progress", "waiting"] },
 };
 
-const CREATE_LABELS = { lead: "Add lead", organization: "Add organization", contact: "Add contact", opportunity: "New opportunity", task: "New task", activity: "Log activity", invoice: "New invoice", payment: "Record payment", supportTicket: "Create ticket" };
+const CREATE_LABELS = { lead: "Add lead", organization: "Add organization", contact: "Add contact", opportunity: "New opportunity", task: "New task", activity: "Log activity", invoice: "New invoice", payment: "Record payment", supportTicket: "Create ticket", employeeProfile: "Add employee" };
 
 function DataPage({ page, data, search, onSearch, onCreate, canCreate, busy, onRefresh, onUpdateStatus, onRefundAction, onConvertOpportunity, onEditRecord, onDeleteRecord, user }) {
   const meta = PAGE_META[page];
@@ -1255,7 +1325,7 @@ function CreateModal({ kind, record = null, onClose, onSubmit, data, user }) {
       {error && <div className="form-error modal-error">{error}</div>}
       <form className="record-form" onSubmit={submit}><div className="record-fields">
         {fields.map((field) => <label className={`field-label ${field.wide ? "field-wide" : ""}`} key={field.name}>{field.label}{field.required && <span className="required-mark"> *</span>}
-          {field.type === "textarea" ? <textarea name={field.name} defaultValue={record?.[field.name] ?? ""} placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`} required={field.required} rows={3} /> : field.type === "select" ? <select name={field.name} defaultValue={defaultValue(field)} required={field.required}>{field.relation && <option value="">Select {field.label.toLowerCase()}</option>}{field.options.map((option) => typeof option === "string" ? <option value={option} key={option}>{option.replaceAll("_", " ")}</option> : <option value={option.value} key={option.value}>{option.label}</option>)}</select> : <input name={field.name} type={field.type || "text"} defaultValue={defaultValue(field)} placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`} required={field.required} min={field.type === "number" ? 0 : undefined} step={field.name === "expected_value" || field.name === "amount" ? "0.01" : undefined} />}
+          {field.type === "textarea" ? <textarea name={field.name} defaultValue={record?.[field.name] ?? ""} placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`} required={field.required} rows={3} /> : field.type === "select" ? <select name={field.name} defaultValue={defaultValue(field)} required={field.required}>{field.relation && <option value="">Select {field.label.toLowerCase()}</option>}{field.options.map((option) => typeof option === "string" ? <option value={option} key={option}>{option.replaceAll("_", " ")}</option> : <option value={option.value} key={option.value}>{option.label}</option>)}</select> : <input name={field.name} type={field.type || "text"} defaultValue={defaultValue(field)} placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`} required={field.required} min={field.type === "number" ? 0 : undefined} minLength={field.minLength} autoComplete={field.type === "password" ? "new-password" : undefined} step={field.name === "expected_value" || field.name === "amount" ? "0.01" : undefined} />}
         </label>)}
       </div><div className="modal-actions"><button type="button" className="soft-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? <span className="button-loader" /> : <><Send size={15} />{record ? "Save changes" : "Save record"}</>}</button></div></form>
     </section>

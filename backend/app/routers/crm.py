@@ -297,7 +297,11 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user: User = De
 @router.get("/tasks")
 def list_tasks(status: str | None = None, overdue_only: bool = False, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Task); roles = {r.name for r in user.roles}
-    if not roles.intersection({"Super Admin", "Management", "Project / Team Manager"}): q = q.filter(or_(Task.assignee_id == user.id, Task.created_by_id == user.id))
+    employee_only = "Employee / Intern" in roles and not roles.intersection({"Super Admin", "Management"})
+    if employee_only:
+        q = q.filter(Task.assignee_id == user.id)
+    elif not roles.intersection({"Super Admin", "Management", "Project / Team Manager"}):
+        q = q.filter(or_(Task.assignee_id == user.id, Task.created_by_id == user.id))
     if status: q = q.filter(Task.status == status)
     if overdue_only: q = q.filter(Task.due_at < datetime.utcnow(), Task.status.notin_(["done", "cancelled"]))
     return q.order_by(Task.due_at.asc().nullslast()).limit(200).all()
@@ -307,8 +311,15 @@ def update_task(task_id: int, data: TaskUpdate, db: Session = Depends(get_db), u
     obj = db.get(Task, task_id)
     if not obj: raise HTTPException(404, "Task not found")
     roles = {r.name for r in user.roles}
+    employee_only = "Employee / Intern" in roles and not roles.intersection({"Super Admin", "Management"})
+    if employee_only and obj.assignee_id != user.id:
+        raise HTTPException(403, "Employees can only update tasks assigned to them")
     if user.id not in (obj.assignee_id, obj.created_by_id) and not roles.intersection({"Super Admin", "Management", "Project / Team Manager"}): raise HTTPException(403, "Not permitted to update this task")
     changes = data.model_dump(exclude_unset=True)
+    if employee_only and set(changes) - {"status"}:
+        raise HTTPException(403, "Employees can only update their task status")
+    if employee_only and changes.get("status") not in {"todo", "in_progress", "blocked", "done"}:
+        raise HTTPException(422, "Choose a valid task status")
     # Employees can update their own task status/details but cannot reassign tasks.
     if not roles.intersection({"Super Admin", "Management", "Project / Team Manager"}) and "assignee_id" in changes: raise HTTPException(403, "Only managers can reassign tasks")
     if changes.get("assignee_id") is not None and not db.get(User, changes["assignee_id"]): raise HTTPException(404, "Assignee not found")
