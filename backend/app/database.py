@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
     cors_origin_regex: str = r"^https://.*\.vercel\.app$"
     upload_dir: str = "private_uploads"
+    google_sheets_spreadsheet_id: str = ""
+    google_sheets_range: str = "Form Responses 1!A:Z"
+    google_sheets_api_key: str = ""
+    google_form_webhook_secret: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

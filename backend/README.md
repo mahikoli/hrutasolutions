@@ -105,6 +105,32 @@ Use a parameterized query and replace `:user_id` with the verified account ID. R
 | GET / POST | `/api/v1/documents` | Upload/list private files linked to permitted CRM records |
 | GET | `/api/v1/reports/summary`, `/api/v1/reports/export/{dataset}` | Role-scoped reporting and CSV export |
 | GET / PATCH / PUT | `/api/v1/admin/...` | Super Admin user access, audit log and workflow settings |
+| GET / POST / PATCH | `/api/v1/internship-management/...` | Student lifecycle, follow-ups, payment verification, batch confirmation, training sessions, attendance, assignments, evaluations, certificates, reports, settings and Google Form sync |
+
+## Internship lifecycle module
+
+The **Internship Management** workspace is integrated into the existing React shell and uses the existing internship applications, leads, trainers, notifications, private document storage, roles and audit log. Its additive Alembic revision is `20261109_0002`; apply it with `alembic upgrade head` before deploying the new API. The local development `create_all` path creates new tables but does not add the new columns to an already initialized SQLite database, so use the migration for existing databases too.
+
+The module adds a student registration/profile API, lifecycle status history, follow-ups, payment records and verification, internship batches with capacity and roster locks, trainer assignment, training sessions and attendance, assignments and submissions, weighted final evaluations, certificate rendering/verification, data-backed overview/report endpoints, and a CSV export that opens in Excel. The main sidebar link is under the **INTERNSHIP MANAGEMENT** group. `Super Admin` and `Management` can approve unpaid batches and final evaluations. `Finance / Accounts` can verify payments. `Internship Coordinator` and `Employee / Intern` roles manage only their assigned students and coordinator-owned batches; either can claim an unassigned registration. Trainers must be linked to a CRM account with the `Trainer / Teacher` role; their APIs are limited to assigned batches.
+
+### Google Forms / Sheets configuration
+
+Google integration stays server-side. Set these backend environment variables; never put the API key, service-account credentials, or webhook secret in a `VITE_` variable:
+
+```env
+GOOGLE_SHEETS_SPREADSHEET_ID=your-response-spreadsheet-id
+GOOGLE_SHEETS_RANGE=Form Responses 1!A:Z
+GOOGLE_SHEETS_API_KEY=   # optional; works only when the response sheet is readable with the key
+GOOGLE_FORM_WEBHOOK_SECRET=use-a-long-random-secret
+```
+
+For a private response sheet, configure Google Application Default Credentials for the backend service (for example, a read-only service account in `GOOGLE_APPLICATION_CREDENTIALS`) and share the response sheet with that service account. Admins can pull rows with `POST /api/v1/internship-management/sync/google-sheets`; it is safe to retry because response IDs, email and normalized mobile numbers are deduplicated. The manual sync log is available at `GET /api/v1/internship-management/sync/runs`.
+
+For immediate form-submit sync without Google Sheets API credentials, use the spreadsheet-bound Apps Script in `integrations/google_form_webhook.gs`. Keep one master response spreadsheet and, for every new Google Form, choose that existing spreadsheet as its response destination. Google Forms adds a response tab there; the spreadsheet form-submit trigger can forward submissions from that spreadsheet. Keep question labels stable (`Name`, `Email`, `Mobile`, `College`, `Domain`) so they map to internship records. Google documents the [existing response spreadsheet option](https://support.google.com/docs/answer/2917686) and the [spreadsheet form-submit event data](https://developers.google.com/apps-script/guides/triggers/events).
+
+Set the backend `GOOGLE_FORM_WEBHOOK_SECRET` and the Apps Script project properties `CRM_WEBHOOK_SECRET` (same value) and `CRM_WEBHOOK_URL` (`https://<backend-host>/api/v1/internship-management/sync/google-form-webhook`). Open Apps Script from the master response spreadsheet, paste `integrations/google_form_webhook.gs`, set those two script properties, then run `installCrmFormSubmitTrigger()` once and approve Google's prompt. This webhook path does not need `GOOGLE_SHEETS_API_KEY`, a service account, or `GOOGLE_SHEETS_SPREADSHEET_ID`; those are only needed for the separate manual Sheets pull. The backend rejects requests with a missing or incorrect secret, deduplicates repeated registrations by response ID/email/mobile, and places new records in Student registrations for coordinator assignment.
+
+Certificate rendering returns a print-ready HTML certificate with a unique ID. Authorized users can print/save it as PDF, and certificate validity is available at `GET /api/v1/internship-management/public/certificates/{certificate_number}`. The student portal is not part of this CRM starter; coordinators record submissions on behalf of students unless a student-facing portal is added later.
 
 ## Important design decisions
 

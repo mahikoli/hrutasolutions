@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import InternshipManagement from "./components/InternshipManagement.jsx";
 import {
   Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, BriefcaseBusiness,
   Building2, CalendarDays, Check, ChevronDown, CircleDollarSign, Clock3,
@@ -41,6 +42,7 @@ async function request(path, { token, body, form, multipart, method = "GET" } = 
 
 const PAGE_META = {
   overview: { label: "Overview", title: "Good morning", icon: LayoutDashboard },
+  internshipManagement: { label: "Internship Management", title: "Internship lifecycle", icon: GraduationCap },
   employees: { label: "Employee Management", title: "Employee directory", icon: UserCog, endpoint: "/employees?page=1&page_size=100", key: "employees", action: "employeeProfile" },
   leads: { label: "Leads", title: "Leads", icon: Target, endpoint: "/leads?page=1&page_size=100", key: "leads", action: "lead" },
   organizations: { label: "Organizations", title: "Organizations", icon: Building2, endpoint: "/organizations?page=1&page_size=100", key: "organizations", action: "organization" },
@@ -85,6 +87,7 @@ const PAGE_META = {
 };
 
 const PAGE_ACCESS = {
+  internshipManagement: ["Super Admin", "Management", "Internship Coordinator", "Employee / Intern", "Training Coordinator", "Trainer / Teacher", "Finance / Accounts"],
   proposals: ["Super Admin", "Management", "Sales / Business Development"],
   invoices: ["Super Admin", "Management", "Finance / Accounts"], payments: ["Super Admin", "Management", "Finance / Accounts"],
   programs: ["Super Admin", "Management", "Internship Coordinator"], applications: ["Super Admin", "Management", "Internship Coordinator"],
@@ -312,6 +315,7 @@ const FORM_META = {
 const NAV_GROUPS = [
   { label: "CRM & SALES", items: ["overview", "leads", "organizations", "contacts", "opportunities", "proposals"] },
   { label: "EMPLOYEE MANAGEMENT", items: ["employees"] },
+  { label: "INTERNSHIP MANAGEMENT", items: ["internshipManagement"] },
   { label: "INTERNSHIPS", items: ["programs", "applications", "interviews", "allocations", "internAttendance", "internTasks", "certificates"] },
   { label: "TRAINING & LMS", items: ["courses", "trainers", "batches", "enrollments", "sessions", "trainingAttendance", "assessments", "results", "feedback"] },
   { label: "PARTNERSHIPS", items: ["partners", "partnershipActivities", "agreements"] },
@@ -656,6 +660,7 @@ function App() {
 
         <div className="page-content" key={page}>
           {page === "overview" ? <Dashboard data={data} user={user} canSell={canSell} onNavigate={setPage} onCreate={setModal} busy={dataBusy} /> :
+            page === "internshipManagement" ? <InternshipManagement token={token} user={user} /> :
             page === "reports" ? <ReportsPage summary={data.reportSummary} token={token} roles={roles} /> :
             page === "notifications" ? <NotificationsPage rows={data.notifications} token={token} onReload={() => loadWorkspace(token, user)} /> :
             page === "documents" ? <DocumentsPage data={data} token={token} roles={roles} /> :

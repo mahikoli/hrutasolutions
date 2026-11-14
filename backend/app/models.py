@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from decimal import Decimal
 from sqlalchemy import (String, Text, Boolean, DateTime, Date, ForeignKey, Numeric,
-                        Integer, UniqueConstraint, Index, Table, Column, JSON)
+                        Integer, UniqueConstraint, Index, Table, Column, JSON, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -210,6 +210,180 @@ class InternshipApplication(TimestampMixin, Base):
     end_date: Mapped[date | None] = mapped_column(Date)
     team_name: Mapped[str | None] = mapped_column(String(120))
     notes: Mapped[str | None] = mapped_column(Text)
+    whatsapp_number: Mapped[str | None] = mapped_column(String(30))
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    university: Mapped[str | None] = mapped_column(String(200))
+    degree: Mapped[str | None] = mapped_column(String(150))
+    department: Mapped[str | None] = mapped_column(String(150))
+    current_academic_year: Mapped[str | None] = mapped_column(String(40))
+    graduation_year: Mapped[int | None] = mapped_column(Integer)
+    selected_domain: Mapped[str | None] = mapped_column(String(150), index=True)
+    preferred_duration_weeks: Mapped[int | None] = mapped_column(Integer)
+    preferred_mode: Mapped[str | None] = mapped_column(String(20))
+    technical_skills: Mapped[str | None] = mapped_column(Text)
+    previous_experience: Mapped[str | None] = mapped_column(Text)
+    registration_source: Mapped[str] = mapped_column(String(80), default="manual", nullable=False)
+    google_form_response_id: Mapped[str | None] = mapped_column(String(160), unique=True, index=True)
+    sync_status: Mapped[str] = mapped_column(String(30), default="not_synced", nullable=False)
+    student_status: Mapped[str] = mapped_column(String(40), default="new_registration", index=True, nullable=False)
+    payment_option: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    payment_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    payment_status: Mapped[str] = mapped_column(String(20), default="pending", index=True, nullable=False)
+    payment_transaction_id: Mapped[str | None] = mapped_column(String(160))
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    internal_remarks: Mapped[str | None] = mapped_column(Text)
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class InternshipFollowUp(Base):
+    __tablename__ = "internship_followups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("internship_applications.id", ondelete="CASCADE"), index=True, nullable=False)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    follow_up_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    outcome: Mapped[str | None] = mapped_column(String(120))
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InternshipPayment(Base):
+    __tablename__ = "internship_payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("internship_applications.id", ondelete="CASCADE"), index=True, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    payment_date: Mapped[date] = mapped_column(Date, default=date.today, nullable=False)
+    method: Mapped[str] = mapped_column(String(40), default="manual", nullable=False)
+    transaction_id: Mapped[str | None] = mapped_column(String(160), unique=True)
+    receipt_reference: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    verified_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InternshipStatusHistory(Base):
+    __tablename__ = "internship_status_history"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("internship_applications.id", ondelete="CASCADE"), index=True, nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(40))
+    to_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    changed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    note: Mapped[str | None] = mapped_column(Text)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InternshipBatch(TimestampMixin, Base):
+    __tablename__ = "internship_batches"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    program_id: Mapped[int | None] = mapped_column(ForeignKey("internship_programs.id", ondelete="SET NULL"), index=True)
+    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    domain: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    duration_weeks: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False)
+    coordinator_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    trainer_id: Mapped[int | None] = mapped_column(ForeignKey("trainers.id", ondelete="SET NULL"), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True, nullable=False)
+    unpaid_approval_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    confirmed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class InternshipBatchStudent(Base):
+    __tablename__ = "internship_batch_students"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "application_id", name="uq_internship_batch_student"),
+        Index("uq_internship_student_active_program", "application_id", "program_id", unique=True,
+              postgresql_where=text("is_active"), sqlite_where=text("is_active = 1")),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("internship_batches.id", ondelete="CASCADE"), index=True, nullable=False)
+    application_id: Mapped[int] = mapped_column(ForeignKey("internship_applications.id", ondelete="CASCADE"), index=True, nullable=False)
+    program_id: Mapped[int | None] = mapped_column(ForeignKey("internship_programs.id", ondelete="SET NULL"), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    added_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InternshipTrainingSession(Base):
+    __tablename__ = "internship_training_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("internship_batches.id", ondelete="CASCADE"), index=True, nullable=False)
+    session_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    topic: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    trainer_id: Mapped[int | None] = mapped_column(ForeignKey("trainers.id", ondelete="SET NULL"))
+    starts_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime)
+    meeting_url: Mapped[str | None] = mapped_column(String(1000))
+    resources: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="scheduled", nullable=False)
+    remarks: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InternshipAssignment(Base):
+    __tablename__ = "internship_assignments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("internship_batches.id", ondelete="CASCADE"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    max_score: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=100, nullable=False)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InternshipSubmission(Base):
+    __tablename__ = "internship_submissions"
+    __table_args__ = (UniqueConstraint("assignment_id", "application_id", name="uq_internship_submission"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("internship_assignments.id", ondelete="CASCADE"), index=True, nullable=False)
+    application_id: Mapped[int] = mapped_column(ForeignKey("internship_applications.id", ondelete="CASCADE"), index=True, nullable=False)
+    submission_link: Mapped[str | None] = mapped_column(String(1000))
+    submission_text: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="submitted", nullable=False)
+    score: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    feedback: Mapped[str | None] = mapped_column(Text)
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class InternshipEvaluation(Base):
+    __tablename__ = "internship_evaluations"
+    __table_args__ = (UniqueConstraint("batch_id", "application_id", name="uq_internship_evaluation"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("internship_batches.id", ondelete="CASCADE"), index=True, nullable=False)
+    application_id: Mapped[int] = mapped_column(ForeignKey("internship_applications.id", ondelete="CASCADE"), index=True, nullable=False)
+    criterion_scores: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    performance_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, nullable=False)
+    result: Mapped[str] = mapped_column(String(30), default="evaluation_pending", index=True, nullable=False)
+    trainer_feedback: Mapped[str | None] = mapped_column(Text)
+    admin_remarks: Mapped[str | None] = mapped_column(Text)
+    final_project_details: Mapped[str | None] = mapped_column(Text)
+    completion_date: Mapped[date | None] = mapped_column(Date)
+    submitted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InternshipSyncRun(Base):
+    __tablename__ = "internship_sync_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    imported_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    triggered_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class InternshipInterview(Base):
@@ -236,9 +410,15 @@ class InternAllocation(Base):
 
 class InternshipAttendance(Base):
     __tablename__ = "internship_attendance"
-    __table_args__ = (UniqueConstraint("application_id", "attendance_date", name="uq_intern_attendance_day"),)
+    __table_args__ = (
+        Index("uq_intern_attendance_legacy_day", "application_id", "attendance_date", unique=True,
+              sqlite_where=text("session_id IS NULL"), postgresql_where=text("session_id IS NULL")),
+        Index("uq_intern_attendance_session", "application_id", "session_id", unique=True,
+              sqlite_where=text("session_id IS NOT NULL"), postgresql_where=text("session_id IS NOT NULL")),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(ForeignKey("internship_applications.id", ondelete="CASCADE"), index=True, nullable=False)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("internship_training_sessions.id", ondelete="CASCADE"), index=True)
     attendance_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(15), nullable=False)
     recorded_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -265,6 +445,7 @@ class InternshipCertificate(Base):
     certificate_type: Mapped[str] = mapped_column(String(30), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     certificate_number: Mapped[str | None] = mapped_column(String(100), unique=True)
+    evaluation_id: Mapped[int | None] = mapped_column(ForeignKey("internship_evaluations.id", ondelete="SET NULL"), unique=True)
     issued_at: Mapped[datetime | None] = mapped_column(DateTime)
     storage_key: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -288,6 +469,8 @@ class Trainer(TimestampMixin, Base):
     email: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(30))
     expertise: Mapped[str | None] = mapped_column(Text)
+    experience_years: Mapped[int | None] = mapped_column(Integer)
+    availability: Mapped[str] = mapped_column(String(20), default="available", nullable=False)
 
 
 class TrainingBatch(TimestampMixin, Base):
@@ -362,8 +545,11 @@ class LearnerFeedback(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     enrollment_id: Mapped[int | None] = mapped_column(ForeignKey("training_enrollments.id", ondelete="CASCADE"))
     application_id: Mapped[int | None] = mapped_column(ForeignKey("internship_applications.id", ondelete="CASCADE"))
+    feedback_type: Mapped[str] = mapped_column(String(20), default="student", nullable=False)
     rating: Mapped[int | None] = mapped_column(Integer)
     comments: Mapped[str | None] = mapped_column(Text)
+    placement_interest: Mapped[bool | None] = mapped_column(Boolean)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 

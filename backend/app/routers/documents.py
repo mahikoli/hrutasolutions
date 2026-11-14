@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 from ..database import get_db, settings
 from ..models import (
     Activity, AuditLog, Contact, Course, DocumentReference, Enrollment, InternshipApplication,
+    InternshipBatch, InternshipBatchStudent,
     InternshipCertificate, Invoice, Lead, Opportunity, Partner, PartnershipActivity,
     PartnershipAgreement, PaymentTransaction, Project, ProjectMilestone, ProjectTask,
-    ProjectUpdate, Refund, SalesProposal, TrainingBatch, TrainingSession, User, Organization,
+    ProjectUpdate, Refund, SalesProposal, Trainer, TrainingBatch, TrainingSession, User, Organization,
 )
 from ..security import get_current_user
 
@@ -34,7 +35,7 @@ ENTITY_RULES = {
     "contact": (Contact, {"Super Admin", "Management", "Sales / Business Development"}),
     "activity": (Activity, {"Super Admin", "Management", "Sales / Business Development"}),
     "proposal": (SalesProposal, {"Super Admin", "Management", "Sales / Business Development"}),
-    "application": (InternshipApplication, {"Super Admin", "Management", "Internship Coordinator"}),
+    "application": (InternshipApplication, {"Super Admin", "Management", "Internship Coordinator", "Employee / Intern", "Training Coordinator", "Trainer / Teacher"}),
     "certificate": (InternshipCertificate, {"Super Admin", "Management", "Internship Coordinator"}),
     "course": (Course, {"Super Admin", "Management", "Training Coordinator"}),
     "batch": (TrainingBatch, {"Super Admin", "Management", "Training Coordinator"}),
@@ -74,8 +75,18 @@ def authorize_entity(db: Session, entity_type: str, entity_id: int, user: User):
         opportunity = db.get(Opportunity, record.opportunity_id)
         if opportunity.owner_id != user.id and not roles.intersection(managers):
             raise HTTPException(403, "Not permitted to access this proposal's documents")
-    if entity_type == "application" and record.coordinator_id != user.id and "Internship Coordinator" in roles and not roles.intersection(managers):
+    if entity_type == "application" and record.coordinator_id not in {None, user.id} and roles.intersection({"Internship Coordinator", "Employee / Intern"}) and not roles.intersection(managers):
         raise HTTPException(403, "Not permitted to access this application")
+    if entity_type == "application" and "Trainer / Teacher" in roles and not roles.intersection(managers):
+        trainer = db.query(Trainer).filter(Trainer.user_id == user.id).first()
+        assigned = trainer and db.query(InternshipBatchStudent.id).join(
+            InternshipBatch, InternshipBatch.id == InternshipBatchStudent.batch_id
+        ).filter(
+            InternshipBatchStudent.application_id == entity_id,
+            InternshipBatch.trainer_id == trainer.id,
+        ).first()
+        if not assigned:
+            raise HTTPException(403, "Not permitted to access this application's documents")
     if entity_type == "project_task":
         project = db.get(Project, record.project_id)
         if project.project_manager_id != user.id and not roles.intersection(managers) and record.assignee_id != user.id:

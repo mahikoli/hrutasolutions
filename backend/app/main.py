@@ -3,12 +3,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import Base, engine, settings, SessionLocal
 from .models import Role
-from .routers import auth, crm, finance, expanded, documents
+from .routers import auth, crm, finance, expanded, documents, internships
 
 DEFAULT_ROLES = [
     "Super Admin", "Management", "Sales / Business Development",
     "Internship Coordinator", "Training Coordinator", "Finance / Accounts",
-    "Marketing Executive", "Project / Team Manager", "Employee / Intern"
+    "Marketing Executive", "Project / Team Manager", "Employee / Intern", "Trainer / Teacher"
 ]
 
 @asynccontextmanager
@@ -41,6 +41,7 @@ app.include_router(crm.router, prefix="/api/v1")
 app.include_router(finance.router, prefix="/api/v1")
 app.include_router(expanded.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(internships.router, prefix="/api/v1")
 
 @app.get("/", tags=["System"])
 @app.head("/", tags=["System"])
